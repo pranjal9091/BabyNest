@@ -12,6 +12,8 @@ from agent.handlers.appointment import handle as handle_appointments
 from agent.handlers.weight import handle as handle_weight
 from agent.handlers.symptoms import handle as handle_symptoms
 from agent.handlers.guidelines import handle as handle_guidelines
+from agent.handlers.medicine import handle as handle_medicine
+from agent.handlers.blood_pressure import handle as handle_bp
 
 from agent.vector_store import register_vector_store_updater, update_guidelines_in_vector_store
 
@@ -20,6 +22,8 @@ dispatch_intent = {
     "weight": handle_weight,
     "symptoms": handle_symptoms,
     "guidelines": handle_guidelines,
+    "medicine": handle_medicine,
+    "blood_pressure": handle_bp,
 }
 
 class BabyNestAgent:
@@ -39,21 +43,20 @@ class BabyNestAgent:
             return "Invalid query. Please provide a valid string."
         
         try:
-            # Step 1: Get user context from cache (no DB hit if cache is valid)
+            # Step 1: Get user context from cache
             user_context = self.get_user_context(user_id)
             if not user_context:
                 return "User profile not found. Please complete your profile setup first."
             
-            # Step 2: Classify intent to see if a specialized handler should be used.
+            # Step 2: Classify intent and dispatch to the appropriate handler
             intent = classify_intent(query)
             if intent in dispatch_intent:
-                # Pass user context to handlers
                 return dispatch_intent[intent](query, user_context)
             
-            # Step 3: Retrieve relevant context from the vector store based on the query.
+            # Step 3: Retrieve relevant context from the vector store
             context = get_relevant_context_from_vector_store(query)
             
-            # Step 4: Build the prompt with the retrieved context and user context, then run the LLM.
+            # Step 4: Build prompt and run the LLM
             prompt = build_prompt(query, context, user_context)
             return run_llm(prompt)
             
@@ -61,14 +64,7 @@ class BabyNestAgent:
             return f"Error processing query: {e}"
     
     def update_cache(self, user_id: str = "default", data_type: str = None, operation: str = "update"):
-        """
-        Intelligently update cache based on database changes.
-        
-        Args:
-            user_id: User ID to update cache for
-            data_type: Type of data that changed ('profile', 'weight', 'medicine', 'symptoms', 'blood_pressure', 'discharge')
-            operation: Type of operation ('create', 'update', 'delete')
-        """
+        """Intelligently update cache based on database changes."""
         self.context_cache.update_cache(user_id, data_type, operation)
     
     def invalidate_cache(self, user_id: str = None):
@@ -76,8 +72,7 @@ class BabyNestAgent:
         self.context_cache.invalidate_cache(user_id)
     
     def refresh_cache_and_embeddings(self):
-        """Manually refresh cache and regenerate embeddings after database changes."""
-        print("🔄 Manually refreshing cache and regenerating embeddings...")
+        """Manually refresh cache and regenerate embeddings."""
         self.context_cache.invalidate_cache()
         update_guidelines_in_vector_store()
     
@@ -89,7 +84,6 @@ class BabyNestAgent:
         """Manually trigger cache cleanup."""
         self.context_cache._cleanup_old_cache_files()
         self.context_cache._cleanup_memory_cache()
-        print("🧹 Cache cleanup completed")
 
 # Global agent instance
 _agent_instance = None
@@ -100,4 +94,3 @@ def get_agent(db_path: str) -> BabyNestAgent:
     if _agent_instance is None:
         _agent_instance = BabyNestAgent(db_path)
     return _agent_instance
-
